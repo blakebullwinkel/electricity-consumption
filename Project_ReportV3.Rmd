@@ -1,0 +1,331 @@
+---
+title: "Modeling Electricity Consumption in the United States"
+subtitle: "STAT346 Final Project"
+author: "Sebastian Gomez, Blake Bullwinkel, Mateo Fiorentino"
+date: "May 23rd, 2020"
+header-includes:
+- \usepackage{xcolor}
+- \usepackage{bm} 
+- \newcommand{\benum}{\begin{enumerate}}
+- \newcommand{\eenum}{\end{enumerate}}
+- \usepackage{float}
+- \floatplacement{figure}{H}
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(leaps)
+library(xtable)
+library(MASS)
+```
+
+
+
+```{r echo=FALSE}
+#DATA CLEANING
+elec = read.csv("recs2015_public_v4.csv")
+#Choose var names and subset dataframe
+var_name = c("KWH","HHSEX","HHAGE","HOUSEHOLDER_RACE","EDUCATION","NHSLDMEM","MONEYPY","REGIONC", "UATYP10","TYPEHUQ","KOWNRENT","YEARMADERANGE","BEDROOMS", "NCOMBATH","WINDOWS","ADQINSUL","SWIMPOOL","NUMFRIG","MICRO","TVCOLOR","NUMSMPHONE","INTERNET","HEATHOME","THERMAIN", "AIRCOND","LGTINNUM","BENOTHER","USESOLAR")
+var_num= c()
+for(i in 1:length(var_name)){
+  var_num[i]= which(names(elec) == var_name[i])
+}
+elec = elec[,var_num]
+#Set females to 0 (more obs) ref category.
+elec$HHSEX = ifelse(elec$HHSEX==1,0,1)
+#Set white to 0 (more obs)
+elec$notwhite = ifelse(elec$HOUSEHOLDER_RACE==1,0,1)
+#Include education dummies compared to some college: CHECK
+elec$lesshigh= ifelse(elec$EDUCATION==1,1,0)
+elec$high= ifelse(elec$EDUCATION==2,1,0)
+elec$somecol = ifelse(elec$EDUCATION==3,1,0)
+elec$bach= ifelse(elec$EDUCATION==4,1,0)
+elec$master= ifelse(elec$EDUCATION==5,1,0)
+#Set income levels to 0=less than 20k
+elec$MONEYPY = elec$MONEYPY-1
+#Set different variables for the region, South as ref category
+elec$NE = ifelse(elec$REGIONC==1,1,0)
+elec$MW = ifelse(elec$REGIONC==2,1,0)
+elec$WE = ifelse(elec$REGIONC==4,1,0)
+#Set census 2010 Urban type to 0, combine all other (more obs)
+elec$UATYP10 = ifelse(elec$UATYP10=="U", 0, 1)
+#Set single-fam det. house type of housing unit to 0, combine all others
+elec$TYPEHUQ = ifelse(elec$TYPEHUQ == 2, 0,1)
+#Set owned=0 as ref. category, combine others
+elec$KOWNRENT = ifelse(elec$KOWNRENT ==1, 0, 1)
+#Set before 1950 to 0, not the most frequent tho
+elec$YEARMADERANGE = elec$YEARMADERANGE-1
+#Set number of windows to average of bounds or upper bound. WE could also select a random number in the range???
+elec$WINDOWS = ifelse(elec$WINDOWS==10,2,ifelse(elec$WINDOWS==20,4, ifelse(elec$WINDOWS==30,8,ifelse(elec$WINDOWS==41,13, ifelse(elec$WINDOWS==42,18, ifelse(elec$WINDOWS==50,25,30))))))
+#Set Well Insulated to zero
+elec$ADQINSUL= elec$ADQINSUL-1
+#Set not applicable to 0, set no pool as ref. category
+elec$SWIMPOOL = ifelse(elec$SWIMPOOL==1,1,0)
+#Set internet=0 as ref. cat
+elec$INTERNET = ifelse(elec$INTERNET==1,0,1)
+#Set have space heating to=0 as ref. cat
+elec$HEATHOME = ifelse(elec$HEATHOME==1,0,1)
+#Set have thermostat to=0 as ref. cat
+elec$THERMAIN = ifelse(elec$THERMAIN==1,0,1)
+#Set have aircond to=0 as ref. cat
+elec$AIRCOND = ifelse(elec$AIRCOND==1,0,1)
+#Set fewer than 20 lightbulbs to zero
+elec$LGTINNUM= elec$LGTINNUM-1
+#Set did not recieve some energy-related assistance to 0
+elec$BENOTHER = ifelse(elec$BENOTHER==1,1,0)
+
+#Numerical Variables
+var_numer = c("KWH", "NHSLDMEM", "NCOMBATH","WINDOWS","NUMFRIG","TVCOLOR")
+var_num_n= c()
+for(i in 1:length(var_numer)){
+  var_num_n[i]= which(names(elec) == var_numer[i])
+}
+#Categorical variables not including education for education
+var_cat = c("notwhite","MONEYPY","NE", "MW", "WE", "UATYP10","SWIMPOOL","LGTINNUM","USESOLAR")
+var_num_c= c()
+for(i in 1:length(var_cat)){
+  var_num_c[i]= which(names(elec) == var_cat[i])
+}
+
+#fit model to see
+model = lm(KWH ~ HHSEX + HHAGE+notwhite+NHSLDMEM+MONEYPY+NE+MW+WE+ UATYP10+ NCOMBATH+WINDOWS+SWIMPOOL+NUMFRIG+TVCOLOR+LGTINNUM+USESOLAR, data = elec)
+#Fit al subsets
+#fit.subsets = regsubsets(KWH ~ HHSEX + HHAGE+notwhite+EDUCATION+NHSLDMEM+MONEYPY+NE+MW+WE+ UATYP10+TYPEHUQ+KOWNRENT+YEARMADERANGE+BEDROOMS+ NCOMBATH+WINDOWS+ADQINSUL+SWIMPOOL+NUMFRIG+MICRO+TVCOLOR+NUMSMPHONE+INTERNET+HEATHOME+THERMAIN+ AIRCOND+LGTINNUM+BENOTHER+USESOLAR, nvmax = 10, data = elec)
+#Fit subsets with R^2, BIC
+#data.frame(summary(fit.subsets)$outmat, R2adj = summary(fit.subsets)$adjr2, BIC = summary(fit.subsets)$bic)
+```
+
+
+## Abstract 
+
+In this study, we examine the relationship between household electricity consuption and several predictor variables reflecting various residential characteristics. We use data from the 2015 U.S. Energy Information Administration Residential Energy Consumption Survey (RECS), which is a nationally representative survey of the energy characteristics, usage patterns, and demographics of 5686 housing units in the United States. Respondents were selected at random using a complex multistage area-probability sample design and answered questionnaires that were completed in one of three ways: in-person computer-assisted personal interviews (CAPI), paper questionnaires sent through the mail, and web questionnaires accessed by a URL. 
+
+Through a multiple linear regression model with normal errors, we study electricity consumption in this sample of households and extrapolate our conclusions to the overall United States population. With continous, categorical, and interacting predictor variables, we aim to account for and explain the vairance in the consumption of electricity. In particular, some of our research questions include: Can socioeconomic or racial characteristics help predict annual electricity consumption? How does annual electricity consumption depend on region? What policy might the government implement to decrease annual electricity consumption for the average household? Our findings suggest that race and region are significant, with white, Southern, and urban homeowners consuming more electricity than other demographic groups. Further, the number of household occupants and several measures of household fixtures, including refrigerators and televisions, are all significant predictors of total electricity consumption.
+
+  
+
+\newpage
+ 
+## I. Introduction
+
+Economic development and modern routines are highly related to electricity consumption. Over the years, electricity has become a key component of modern daily living and powers a multitude of basic activities such as lighting, cooking, heating, cooling, recreational appliances, and the internet, to name a few. Since the 1950s, electricity consumption in the United States has increased by a factor of 15 and in 2018 exceeded 3.9 trillion kilowatthours. Unsurprisingly, these trends are also closely associated with climate change and higher global temperatures. In the commercial sector, 14% (the largest share) of electricity consumption is directly related to cooling an refrigeration. Likewise, cooling accounts for the largest share of residential sector electricity consumption and increases every year. According to the \href{https://www.eia.gov/energyexplained/use-of-energy/electricity-use-in-homes.php}{U.S. Energy Information Administration}, average US household electricity consumptions sits at around 11,000 kWh per year, with households in the Northeast consuming the least amount of electricity and Southern households consuming the most. 
+
+Our paper seeks to explain the variation in electricity consumption across the country via a multiple linear regression model with normal errors. Because energy consumption has a wide range of important socioeconomic implications raning from climate policy to national security, we believe that our analysis could lead to significant findings with real-world applications. Our analysis is based on data from the 2015 U.S. Energy Information Administration, Residential Energy Consumption Survey (RECS), which collects a nationally representative survey of the energy characteristics, usage patterns, and demographics of housing units in the United States. Using a complex multistage area-probability sample design, we use this nationally representative sample of 5686 housing units in the United States. Respondents answered questionnaires that were completed in one of three ways: in-person computer-assisted personal interviews (CAPI), paper questionnaires sent through the mail, and web questionnaires accessed by a URL. Among all of the variables available, we decided to analyze the following 10 predictors: Census region (Northeast, Midwest, South, West), householder race, annual gross household income, whether the house is in an urban area, number of household members, total number of full bathrooms, number of windows, whether the house has a heated swimming pool, number of refrigerators, number of televisions used, number of lightbulbs installed, and whether the house uses solar energy. The response variable is total site electricity usage in kilowatthours (kWh).
+
+To evaluate the linear associations between these predictors and the response variable, Section I. provides a brief introduction to the research questions, Section II. describes the potential variables and their associated distributions and statistics, and Section III. introduces a multivariate linear model with normal errors to address several important research questions. To choose a final model and assess the validity of the model, Section IV. displays the diagnostic plots and concludes with a necessary transformation to the response variable in order to achieve a linear relationship and model the sample data using a multivariate linear model with normal errors. Section V. presents the final model and interprets the adjusted effects of each predictor variable given the others. Finally, Section VI. summarizes our main findings and conclusions and addresses our original reasearch questions. Further, we end with a discussion on potential areas of improvement and suggestions for future studies that may focus on this research question or use this data. 
+
+
+## II. Exploratory Data Analysis
+
+```{r echo=FALSE, results="asis"}
+#Summary Statistics Table for Continous
+library(xtable)
+continuous<-data.frame(mean=apply(elec[,var_num_n], 2, mean),
+                    sd=apply(elec[,var_num_n], 2, sd),
+                    median=apply(elec[,var_num_n], 2, median),
+                    IQR=apply(elec[,var_num_n], 2, IQR))
+rownames(continuous) = c("Total site electricity usage (kWh)","Number of household members","Number of full bathrooms","Number of windows","Number of refrigerators used","Number of televisions used")
+options(xtable.timestamp = "")
+print(xtable(continuous, caption = 'Numerical summary of the continuous variables'),
+comment = FALSE, caption.placement = 'top')
+```
+
+\newpage
+
+First, we describe the summary statistics and distributions of the continous variables. In Figure 1, we see that all of the continuous variables are right-skewed. This is unsurprising because we would expect that most households will have a relatively small number of features like bedrooms, refrigerators and televisions, while only a few households are likely to have higher numbers of these. Note that during data cleaning, we converted some variables to binary variables when they included extraneous information or the majority of observations took only one value (e.g. race). We also split some variables into binary indicator variables when it did not make sense to interpret them as ordered categorical variables (e.g. region). 
+
+\setlength{\abovecaptionskip}{-85pt}
+```{r echo=FALSE, fig.height=6, fig.cap="\\label{fig:fig1} Univariate EDA showing histograms and barplots."}
+library("RColorBrewer")
+colors = brewer.pal(n=12,name="Set3")
+count = 0
+#Univariate EDA
+par(mfrow=c(4,4))
+#Histograms
+for (i in var_num_n) {
+  count = count+1
+  hist(elec[,i],xlab=names(elec)[i],
+       main=names(elec)[i], breaks=10,col=colors[count])
+}
+
+#Barplots 
+var_cat_box = c("notwhite","MONEYPY","REGIONC", "UATYP10","SWIMPOOL","LGTINNUM","USESOLAR")
+var_num_c_box= c()
+for(i in 1:length(var_cat_box)){
+  var_num_c_box[i]= which(names(elec) == var_cat_box[i])
+}
+barplot(c(table(elec$notwhite)[1], table(elec$notwhite)[2]), names.arg= c("White", "Not White"), xlab="Race",ylab="Frequency", main = "Race", col=colors[7])
+barplot(c(table(elec$MONEYPY)[1], table(elec$MONEYPY)[2], table(elec$MONEYPY)[3], table(elec$MONEYPY)[4], table(elec$MONEYPY)[5], table(elec$MONEYPY)[6], table(elec$MONEYPY)[7], table(elec$MONEYPY)[8]), names.arg= c("<20K", "20-40K", "40-60K", "60-80K", "80-100K", "100-120K", "120-140K", ">140K"), xlab="Race",ylab="Frequency", main = "Income", col=colors[8])
+barplot(c(table(elec$REGIONC)[1], table(elec$REGIONC)[2], table(elec$REGIONC)[3], table(elec$REGIONC)[4]), names.arg= c("NE", "MW", "S", "W"), xlab="Region",ylab="Frequency", main = "Region", col=colors[9])
+barplot(c(table(elec$UATYP10)[1], table(elec$UATYP10)[2]), names.arg= c("Urban", "Rural"), xlab="Urbanity",ylab="Frequency", main = "Urbanity", col=colors[10])
+barplot(c(table(elec$SWIMPOOL)[1], table(elec$SWIMPOOL)[2]), names.arg= c("No", "Yes"), xlab="Swimpool",ylab="Frequency", main = "Swimpool", col=colors[11])
+barplot(c(table(elec$LGTINNUM)[1], table(elec$LGTINNUM)[2], table(elec$LGTINNUM)[3], table(elec$LGTINNUM)[4], table(elec$LGTINNUM)[5]), names.arg= c("<20", "20-40", "40-60", "60-80", ">80"), xlab="Number of Lightbulbs",ylab="Frequency", main = "Lightbulbs", col=colors[12])
+#barplot(c(table(elec$USESOLAR)[1], table(elec$USESOLAR)[2]), names.arg= c("No", "Yes"), xlab="Solar",ylab="Frequency", main = "Solar Energy")
+```
+
+Looking more closely at Figure 1, we notice that a couple of households have very high electricity consumption while the vast majority have similar amounts on the lower end of the distribution. The majority of respondents self-identified as white (81%). However, there is considerable variation in household income, with 17% of respondents reporting less than 20K, 22% between 20-40K, 15% between 40-60K, 13% between 60-80K, 8% between 80-100K, 7% between 100-120K, 5% between 120-140K, and 10% over 140K. 14% of households live in the Northeast, 23% in the Midwest, 35% in the South, and 27% in the West. 69% of households live in an urban area whereas only 31% live in rural or non-urban areas. In addition, 92% reported not having a heated swimming pool, and 99% reported that they do not use solar energy. Finally, we see large variation in the number of lightbulbs per household with 35% having fewer than 20, 36% between 20 and 40, 16% between 40 and 60, 7% between 60 and 80, and 4% over 80. 
+
+\setlength{\abovecaptionskip}{-5pt}
+```{r echo=FALSE, fig.height=4, fig.cap="\\label{fig:fig2} Pairs plot showing bivariate EDA for the continuous variables."}
+#Bivariate EDA
+source("panelfxns.R")
+pairs(elec[,var_num_n], lower.panel = panel.cor)
+```
+
+```{r echo=FALSE, fig.height=4, fig.cap="\\label{fig:fig3} Boxplots showing bivariate EDA for the categorical variables."}
+#Boxplots for categorical Bivariate EDA
+par(mfrow=c(2,4))
+for (i in var_num_c_box) {
+  boxplot(KWH~elec[,i],xlab=names(elec)[i], data = elec,
+       main=names(elec)[i], col=8)
+}
+```
+
+Figures 2 and 3 show bivariate EDA via a pairs plot for the continous variables and boxplots for the categorical variables, respectively. None of our continous variables appear to be very closely related to each other, which is a good sign that we do not have a high degree of multicollinearity. We also observe that electricity usage appears to increase as the numbers of bathrooms, windows, refrigerators, and televisions increase. Given that the patterns are not entirely obvious, however, the diagnostic plots and model selection sections will help us decide which predictors are most useful in capturing the variation in electricity usage. The boxplots for the categorical variables in Figure 3 suggest that we can consider both income and number of lightbulbs as ordered categorical variables because we see fairly regular increases in electricity consumption for each category increase. It is not surprising that households located in urban areas or that have heated pools show higher median electricity consumption. Finally, it is noteworthy that electricity consumption does not appear to vary with the race of the respondent and that the Southern region reflects higher median electricity usage. 
+
+
+## III. Initial Modeling
+
+```{r, echo=FALSE}
+#Initial modeling
+model.1 = lm(KWH ~ notwhite+NHSLDMEM+MONEYPY+NE+MW+WE+UATYP10+NCOMBATH+WINDOWS+SWIMPOOL+NUMFRIG+TVCOLOR+LGTINNUM+USESOLAR, data = elec)
+s = summary(model.1)
+```
+
+```{r, echo= FALSE, fig.cap= "\\label{fig:fig4}Plots for possible interaction terms", fig.height=3.2 }
+#Interaction Terms
+par(mfrow=c(1,2))
+model_AddVarLW = lm(LGTINNUM*WINDOWS ~notwhite+NHSLDMEM+MONEYPY+NE+MW+WE+ UATYP10+NCOMBATH+WINDOWS+SWIMPOOL+NUMFRIG+TVCOLOR+LGTINNUM+USESOLAR, data = elec)
+plot(model_AddVarLW$res,model.1$res, pch=16, xlab = "Residuals Lightbulbs*Windows \n as Response", ylab="Residuals of No \nInteraction Model", main = "Added-Variable\n Lightbulbs*Windows")
+with(elec,plot(MONEYPY, KWH, pch=as.numeric(notwhite+1),col=as.numeric(notwhite+1), xlab = "Income"))
+legend("topleft",c("White", "Not White"),col=seq(1,2),pch=seq(1,2),cex=0.5)
+linew = lm(KWH[notwhite=="0"]~MONEYPY[notwhite=="0"], data=elec); abline(linew,lwd=3)
+linenw = lm(KWH[notwhite=="1"]~MONEYPY[notwhite=="1"], data=elec); abline(linenw,col=2,lwd=3)
+```
+
+
+
+In our initial model, we use total site electricity usage in kWh as our response variable and include all other variables as predictors. Figure 4 shows the added variable plot and slope plot for two possible interaction terms: one between the number of lightbulbs and the number of windows in a household, and another between income and race. First, the added variable plot (which we use because both are continous variables) on the left suggests that an interaction term between the number of lightbulbs and windows will not help our model because the residuals do not show any trend, implying that adding this interaction would not help to explain any additional unexplained variance. Second, given that the lines for the two categories of race intersect in the plot on the right, we can infer that including an interaction term between race and income might help explain some variation in electricity usage. We will further evaluate whether or not to include these interactions in the diagnostics section and through hypothesis testing.
+
+
+## IV. Diagnostics and Model Selection
+
+Figure 5 shows the residual plots for diagnostic purposes. It is evident from the first plot of model residuals and fitted values that the errors are not normal and do not have constant variance. This is corroborated by our boxcox transformation plot, which indicates that we should apply a transformation to the electricity consumption variable of $(KWH)^{1/3}$ in order to fix this issue and satisfy model assumptions. Figure 6 shows the same diagnostic plots after applying this transformation. As we can see, the variance is now much more constant, a significant improvement to our original, untransformed model. While the normal probability plot shows that the residuals are now aligned with the normality line, the tails are still heavy, which might indicate the presence of extreme values. The individual predictor plots suggest that the residuals are randomly scattered around 0 and the variance is constant.
+
+
+```{r ,fig.cap= "\\label{fig:fig5} Diagnostic plots before transformation", echo=FALSE}
+par(mfrow=c(3,4))
+plot(model.1$fitted.values, model.1$residuals, xlab = "Fitted Values", ylab = "Residuals", main = "Fitted Values \n vs. Residuals", col = 1)
+abline(0,0, col=2)
+boxplot(model.1$residuals~elec$notwhite, data = elec, xlab = "Race (not white)", ylab = "Residuals", main = "Race vs. \nResiduals", col = 1)
+abline(0,0, col=2)
+plot(elec$NHSLDMEM , model.1$residuals, xlab = "# hh members", ylab = "Residuals", main = "Household Members vs. Residuals", col = 1)
+abline(0,0, col=2)
+boxplot(model.1$residuals~elec$MONEYPY, data = elec, xlab = "Income", ylab = "Residuals", main = "Income vs. \nResiduals", col = 1)
+abline(0,0, col=2)
+boxplot(model.1$residuals~elec$REGIONC, data = elec, xlab = "Region", ylab = "Residuals", main = "Region vs. \nResiduals", col = 1)
+abline(0,0, col=2)
+#boxplot(model.1$residuals~elec$UATYP10, data = elec, xlab = "Urban", ylab = "Residuals", main = "Urban vs. \nResiduals", col = 1)
+#abline(0,0, col=2)
+plot(elec$NCOMBATH , model.1$residuals, xlab = "# Bathrooms", ylab = "Residuals", main = "Bathrooms vs. Residuals", col = 1)
+abline(0,0, col=2)
+plot(elec$WINDOWS , model.1$residuals, xlab = "# Windows", ylab = "Residuals", main = "Windows vs. Residuals", col = 1)
+abline(0,0, col=2)
+boxplot(model.1$residuals~elec$SWIMPOOL, data = elec, xlab = "Pool", ylab = "Residuals", main = "Pool vs. \nResiduals", col = 1)
+abline(0,0, col=2)
+plot(elec$NUMFRIG , model.1$residuals, xlab = "# Refrigerators", ylab = "Residuals", main = "Refrigerators vs. Residuals", col = 1)
+abline(0,0, col=2)
+#plot(elec$TVCOLOR , model.1$residuals, xlab = "# of TVs", ylab = "Residuals", main = "TVs vs. Residuals", col = 1)
+#abline(0,0, col=2)
+boxplot(model.1$residuals~elec$LGTINNUM, data = elec, xlab = "# lightbulbs", ylab = "Residuals", main = "Lightbulbs vs. \nResiduals", col = 1)
+abline(0,0, col=2)
+#boxplot(model.1$residuals~elec$USESOLAR, data = elec, xlab = "Solar", ylab = "Residuals", main = "Solar vs. \nResiduals", col = 1)
+#abline(0,0, col=2)
+qqnorm(model.1$residuals, main = "Normal Probability \nPlot nof Residuals")
+qqline(model.1$residuals, col = 2)
+boxcox(model.1)
+```
+
+```{r,fig.cap= "\\label{fig:fig6} Diagnostic plots after transformation" , echo=FALSE}
+model.2 = lm((KWH)^(1/3) ~ notwhite+NHSLDMEM+MONEYPY+NE+MW+WE+UATYP10+NCOMBATH+WINDOWS+SWIMPOOL+NUMFRIG+TVCOLOR+LGTINNUM+USESOLAR, data = elec)
+par(mfrow=c(3,4))
+plot(model.2$fitted.values, model.2$residuals, xlab = "Fitted Values", ylab = "Residuals", main = "Fitted Values \n vs. Residuals", col = 1)
+abline(0,0, col=2)
+boxplot(model.2$residuals~elec$notwhite, data = elec, xlab = "Race (not white)", ylab = "Residuals", main = "Race vs. \nResiduals", col = 1)
+abline(0,0, col=2)
+plot(elec$NHSLDMEM , model.2$residuals, xlab = "# hh members", ylab = "Residuals", main = "Household Members vs. Residuals", col = 1)
+abline(0,0, col=2)
+boxplot(model.2$residuals~elec$MONEYPY, data = elec, xlab = "Income", ylab = "Residuals", main = "Income vs. \nResiduals", col = 1)
+abline(0,0, col=2)
+boxplot(model.2$residuals~elec$REGIONC, data = elec, xlab = "Region", ylab = "Residuals", main = "Region vs. \nResiduals", col = 1)
+abline(0,0, col=2)
+#boxplot(model.2$residuals~elec$UATYP10, data = elec, xlab = "Urban", ylab = "Residuals", main = "Urban vs. \nResiduals", col = 1)
+#abline(0,0, col=2)
+plot(elec$NCOMBATH , model.2$residuals, xlab = "# Bathrooms", ylab = "Residuals", main = "Bathrooms vs. Residuals", col = 1)
+abline(0,0, col=2)
+plot(elec$WINDOWS , model.2$residuals, xlab = "# Windows", ylab = "Residuals", main = "Windows vs. Residuals", col = 1)
+abline(0,0, col=2)
+boxplot(model.2$residuals~elec$SWIMPOOL, data = elec, xlab = "Pool", ylab = "Residuals", main = "Pool vs. \nResiduals", col = 1)
+abline(0,0, col=2)
+plot(elec$NUMFRIG , model.2$residuals, xlab = "# Refrigerators", ylab = "Residuals", main = "Refrigerators vs. Residuals", col = 1)
+abline(0,0, col=2)
+#plot(elec$TVCOLOR , model.2$residuals, xlab = "# of TVs", ylab = "Residuals", main = "TVs vs. Residuals", col = 1)
+#abline(0,0, col=2)
+boxplot(model.2$residuals~elec$LGTINNUM, data = elec, xlab = "# lightbulbs", ylab = "Residuals", main = "Lightbulbs vs. \nResiduals", col = 1)
+abline(0,0, col=2)
+#boxplot(model.2$residuals~elec$USESOLAR, data = elec, xlab = "Solar", ylab = "Residuals", main = "Solar vs. \nResiduals", col = 1)
+#abline(0,0, col=2)
+qqnorm(model.2$residuals, main = "Normal Probability \n Plot of Residuals")
+qqline(model.2$residuals, col = 2)
+```
+
+```{r eval=FALSE, include=FALSE}
+model.2 = lm(KWH^(1/3) ~ notwhite+NHSLDMEM+NE+MW+WE+UATYP10+NCOMBATH+WINDOWS+SWIMPOOL+NUMFRIG+TVCOLOR+LGTINNUM+MONEYPY+USESOLAR, data = elec)
+aov(model.2)
+```
+
+To finalize our model, we consider adding interaction terms and removing predictor variables using hypothesis testing. We first use a t-test on the interaction between income and race variable. The null hypothesis is that there is no relationship between this interaction and transformed energy consumption. We obtain a p-value of 0.388 and therefore fail to reject the null hypothesis. Hence, we do not include this interaction in our model. Next, we use a partial F-test to see whether we can remove the income and solar usage variables. The null hypothesis is that there is no adjusted relationship between either of these predictors and transformed price. The test has an F-statistic of 0.164 with 2 and 5671 degrees of freedom. The p-value associated with this test is 0.152, which is greater than a significance level of $\alpha=0.10$. Hence, we fail to reject the null hypothesis and choose to remove both of these variables from the model.
+
+\newpage
+
+## V. Final Model Inference and Results
+
+Estimates for our final model and 95% confidence intervals for each parameter are shown in Table 2. The p-values for all 12 predictors is significant, indicating that each variable has a significant linear relationship with the response $(KWH)^{1/3}$ even after adjusting for the other 11 variables. 
+
+\setlength{\abovecaptionskip}{+2pt} 
+```{r results = "asis", echo=FALSE}
+final_model = lm(KWH^(1/3) ~ notwhite+NHSLDMEM+NE+MW+WE+UATYP10+NCOMBATH+WINDOWS+SWIMPOOL+NUMFRIG+TVCOLOR+LGTINNUM, data = elec)
+final_modelsum = summary(final_model)
+results = data.frame(Estimates=formatC(final_modelsum$coefficients[,1],format="f",digits=3), Standard.Error=formatC(final_modelsum$coefficients[,2],format="f",digits=3), p.value=final_modelsum$coefficients[,4], CI.lower=formatC(confint(final_model)[,1],format="f",digits=3), CI.upper=formatC(confint(final_model)[,2],format="f",digits=3))
+options(xtable.timestamp = "")
+print(xtable(results, caption = 'Estimated coefficients for the final linear regression model', digits=-3),
+comment = FALSE, caption.placement = 'top')
+```
+
+We now interpret our final model parameters in context: 
+
+- The "notwhite" coefficient indicates that households in which the respondent was not white are expected to consume $0.5436^3=0.1606$kWh less electricity than households with white respondents, holding all other variables constant. 
+- The "NHSLDMEM" coefficient indicates that an increase in the number of household members by one is associated with an increase in expected electricity consumption of $0.5402^3=0.1576$kWh, holding all other variables constant. 
+- The "NE," "MW," and "WE" coefficients indicate that households located in the Northeast, Midwest, and Western United States are expected to consume $3.760^3=53.15$kWh, $2.931^3=25.17$kWh, and $3.413^3=39.75$kWh less electricity than Southern households, respectively, holding all other variables constant. 
+- The "UATYP10" coefficient indicates that households located in urban areas are expected to consume $1.456^3=3.086$kWh more electricity than non-urban households, holding all other variables constant.
+- The "NCOMBATH" coefficient indicates that an increase in the number of bathrooms in a household by one is associated with an increase in expected electricity consumption of $0.6077^3=0.2244$kWh, holding all other variables constant.
+- The "WINDOWS" coefficient indicates that an increase in the number of windows in a household by one is associated with an increase in expected electricity consumption of $0.06138^3=0.0002312$kWh, holding all other variables constant.
+- The "SWIMPOOL" coefficient indicates that households with heated swimming pools are expected to consume $2.293^3=12.05$kWh more electricity than households without heated pools, holding all other variables constant.
+- The "NUMFRIG" coefficient indicates that an increase in the number of refrigerators in a household by one is associated with an increase in expected electricity consumption of $0.8553^3=0.6256$kWh, holding all other variables constant.
+- The "TVCOLOR" coefficient indicates that an increase in the number of televisions in a household by one is associated with an increase in expected electricity consumption of $0.5230^3=0.1430$kWh, holding all other variables constant.
+- The "LGTINNUM" coefficient indicates that an increase in the number of lightbulbs in a household by one level (20 lightbulbs) is associated with an increase in expected electricity consumption of $0.4604^3=0.09759$kWh, holding all other variables constant.
+
+
+## VI. Discussion
+We sought to sought to understand the determinants of electrical energy consumption among American households.Our twelve-variable model explains 46.27% of the variability in transformed electricity usage ($R^2=0.4627$), which suggests that while these variables are significant, there remains a sizable portion left unexplained and a possible area for further inquiry. One of the most significant predictors of higher energy usage was whether a home was located in the south; this makes sense: areas at lower latitudes tend to experience warmer temperatures, which place greater energy demands on cooling systems. Perhaps one way to test this hypothesis would be to regress total electricity consumption against the relative shares attributed to cooling, heating, etc., although there may be data limitations. Another key finding was that the presence of a swimming pool was one of the most significant determinants of annual electrical consumption. Thus, if the U.S. government wanted to reduce energy consumption, it might consider imposing some type of tax on swimming pools, although this would obviously be fraught with controversy. Another way in which our analysis could be extended would be to include square footage as another variable. Many of our predictors (such as number of windows, lightbulbs, etc.) seem like they would be correlated with larger homes, so it would be interesting to see if they remain significant after accounting for this variable. Finally, given that many of the concerns related to energy usage revolve around its implications for the future, performing this type of statistical analysis on time series data could yield valuable information about energy usage trends of concern.
+
+
+## References
+
+\setlength{\parindent}{-0.2in}
+\setlength{\leftskip}{0.2in}
+\setlength{\parskip}{8pt}
+\noindent
+
+Annual Energy Outlook 2019, US Energy Information Administration, January 2019.
